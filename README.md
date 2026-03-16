@@ -28,8 +28,20 @@ Check the prerequisites before you start to ensure you have the necessary softwa
 
 - Linux Ubuntu 22.04 LTS releases and later
 - Docker installed and running
+- [NVIDIA OpenShell](https://github.com/NVIDIA/OpenShell) installed
 
-#### Hardware
+### Install NemoClaw and Onboard OpenClaw Agent
+
+Download and run the installer script.
+The script installs Node.js if it's not already installed.
+On GPU systems, the installer also pulls a Nemotron model through Ollama based on available VRAM.
+After installation, the script runs the guided onboard wizard to create a sandbox, configure inference, and apply security policies.
+
+```console
+$ git clone https://github.com/NVIDIA/openshell-openclaw-plugin.git
+$ cd openshell-openclaw-plugin
+$ ./install.sh
+```
 
 The installer detects available VRAM and pulls the appropriate model:
 
@@ -39,19 +51,6 @@ The installer detects available VRAM and pulls the appropriate model:
 | < 120 GB                         | `nemotron-3-nano:30b`    |
 
 The installer handles all other dependencies, including Node.js, Docker, the OpenShell CLI, and Ollama.
-
-### Install NemoClaw and Onboard OpenClaw Agent
-
-Download and run the installer script.
-The script installs Node.js, Docker, the OpenShell CLI, Ollama if a GPU is detected, and the NemoClaw CLI.
-On GPU systems, the installer also pulls a Nemotron model through Ollama based on available VRAM.
-After installation, the script runs the guided onboard wizard to create a sandbox, configure inference, and apply security policies.
-
-```console
-$ git clone https://github.com/NVIDIA/openshell-openclaw-plugin.git
-$ cd openshell-openclaw-plugin
-$ ./install.sh
-```
 
 When the install completes, a summary confirms the running environment:
 
