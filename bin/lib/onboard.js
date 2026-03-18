@@ -13,6 +13,7 @@ const {
   validateLocalProvider,
 } = require("./local-inference");
 const {
+  CLOUD_MODEL_OPTIONS,
   DEFAULT_CLOUD_MODEL,
   DEFAULT_OLLAMA_MODEL,
   getOpenClawPrimaryModel,
@@ -123,6 +124,19 @@ PYCFG
 openclaw models set ${shellQuote(primaryModel)} > /dev/null 2>&1 || true
 exit
 `.trim();
+}
+
+async function promptCloudModel() {
+  console.log("");
+  console.log("  Cloud models:");
+  CLOUD_MODEL_OPTIONS.forEach((option, index) => {
+    console.log(`    ${index + 1}) ${option.label} (${option.id})`);
+  });
+  console.log("");
+
+  const choice = await prompt("  Choose model [1]: ");
+  const index = parseInt(choice || "1", 10) - 1;
+  return (CLOUD_MODEL_OPTIONS[index] || CLOUD_MODEL_OPTIONS[0]).id;
 }
 
 function isDockerRunning() {
@@ -586,6 +600,7 @@ async function setupNim(sandboxName, gpu) {
       }
     } else {
       await ensureApiKey();
+      model = model || (await promptCloudModel()) || DEFAULT_CLOUD_MODEL;
     }
     model = model || requestedModel || DEFAULT_CLOUD_MODEL;
     console.log(`  Using NVIDIA Cloud API with model: ${model}`);

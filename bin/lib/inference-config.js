@@ -4,6 +4,14 @@
 const INFERENCE_ROUTE_URL = "https://inference.local/v1";
 const DEFAULT_CLOUD_MODEL = "nvidia/nemotron-3-super-120b-a12b";
 const DEFAULT_OLLAMA_MODEL = "nemotron-3-nano:30b";
+const CLOUD_MODEL_OPTIONS = [
+  { id: "nvidia/nemotron-3-super-120b-a12b", label: "Nemotron 3 Super 120B" },
+  { id: "moonshotai/kimi-k2.5", label: "Kimi K2.5" },
+  { id: "z-ai/glm5", label: "GLM-5" },
+  { id: "minimaxai/minimax-m2.5", label: "MiniMax M2.5" },
+  { id: "qwen/qwen3.5-397b-a17b", label: "Qwen3.5 397B A17B" },
+  { id: "openai/gpt-oss-120b", label: "GPT-OSS 120B" },
+];
 const DEFAULT_ROUTE_PROFILE = "inference-local";
 const DEFAULT_ROUTE_CREDENTIAL_ENV = "OPENAI_API_KEY";
 const MANAGED_PROVIDER_ID = "inference";
@@ -55,6 +63,7 @@ function getOpenClawPrimaryModel(provider, model) {
 }
 
 module.exports = {
+  CLOUD_MODEL_OPTIONS,
   DEFAULT_CLOUD_MODEL,
   DEFAULT_OLLAMA_MODEL,
   DEFAULT_ROUTE_CREDENTIAL_ENV,

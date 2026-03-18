@@ -16,9 +16,11 @@ const BUILD_ENDPOINT_URL = "https://integrate.api.nvidia.com/v1";
 const HOST_GATEWAY_URL = "http://host.openshell.internal";
 const DEFAULT_MODELS = [
     { id: "nvidia/nemotron-3-super-120b-a12b", label: "Nemotron 3 Super 120B" },
-    { id: "nvidia/llama-3.1-nemotron-ultra-253b-v1", label: "Nemotron Ultra 253B" },
-    { id: "nvidia/llama-3.3-nemotron-super-49b-v1.5", label: "Nemotron Super 49B v1.5" },
-    { id: "nvidia/nemotron-3-nano-30b-a3b", label: "Nemotron 3 Nano 30B" },
+    { id: "moonshotai/kimi-k2.5", label: "Kimi K2.5" },
+    { id: "z-ai/glm5", label: "GLM-5" },
+    { id: "minimaxai/minimax-m2.5", label: "MiniMax M2.5" },
+    { id: "qwen/qwen3.5-397b-a17b", label: "Qwen3.5 397B A17B" },
+    { id: "openai/gpt-oss-120b", label: "GPT-OSS 120B" },
 ];
 function resolveProfile(endpointType) {
     switch (endpointType) {
@@ -284,11 +286,18 @@ async function cliOnboard(opts) {
         model = opts.model;
     }
     else {
-        // Build model options: prefer Nemotron models from the endpoint, fall back to defaults
-        const nemotronModels = validation.models.filter((m) => m.includes("nemotron"));
-        const modelOptions = nemotronModels.length > 0
-            ? nemotronModels.map((id) => ({ label: id, value: id }))
-            : DEFAULT_MODELS.map((m) => ({ label: `${m.label} (${m.id})`, value: m.id }));
+        const discoveredModelOptions = validation.models.map((id) => ({ label: id, value: id }));
+        const curatedCloudOptions = endpointType === "build" || endpointType === "ncp"
+            ? DEFAULT_MODELS.filter((option) => validation.models.includes(option.id)).map((option) => ({
+                label: `${option.label} (${option.id})`,
+                value: option.id,
+            }))
+            : [];
+        const modelOptions = curatedCloudOptions.length > 0
+            ? curatedCloudOptions
+            : discoveredModelOptions.length > 0
+                ? discoveredModelOptions
+                : DEFAULT_MODELS.map((m) => ({ label: `${m.label} (${m.id})`, value: m.id }));
         model = await (0, prompt_js_1.promptSelect)("Select your primary model:", modelOptions);
     }
     // Step 6: Resolve profile
