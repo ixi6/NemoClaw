@@ -18,6 +18,10 @@ info()  { echo -e "${GREEN}[install]${NC} $1"; }
 warn()  { echo -e "${YELLOW}[install]${NC} $1"; }
 fail()  { echo -e "${RED}[install]${NC} $1"; exit 1; }
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./lib/runtime.sh
+. "$SCRIPT_DIR/lib/runtime.sh"
+
 # Ensure nvm environment is loaded in the current shell.
 ensure_nvm_loaded() {
   if [ -z "${NVM_DIR:-}" ]; then
@@ -177,6 +181,23 @@ install_docker() {
   if command -v docker > /dev/null 2>&1; then
     # Docker installed but not running
     if [ "$OS" = "Darwin" ]; then
+      local colima_socket=""
+      local docker_desktop_socket=""
+      colima_socket="$(find_colima_docker_socket || true)"
+      docker_desktop_socket="$(find_docker_desktop_socket || true)"
+
+      if [ -n "${DOCKER_HOST:-}" ]; then
+        fail "Docker is installed but the selected runtime is not running. Start the runtime behind DOCKER_HOST (${DOCKER_HOST}) and re-run."
+      fi
+
+      if [ -n "$colima_socket" ] && [ -n "$docker_desktop_socket" ]; then
+        fail "Both Colima and Docker Desktop are available on this Mac. Start the runtime you want explicitly and re-run, or set DOCKER_HOST to select one."
+      fi
+
+      if [ -n "$docker_desktop_socket" ]; then
+        fail "Docker Desktop appears to be installed but is not running. Start Docker Desktop and re-run."
+      fi
+
       if command -v colima > /dev/null 2>&1; then
         info "Starting Colima..."
         colima start

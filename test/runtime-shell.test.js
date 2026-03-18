@@ -60,6 +60,32 @@ describe("shell runtime helpers", () => {
     fs.rmSync(home, { recursive: true, force: true });
   });
 
+  it("classifies a Docker Desktop DOCKER_HOST correctly", () => {
+    const result = runShell(`source "${RUNTIME_SH}"; docker_host_runtime "unix:///Users/test/.docker/run/docker.sock"`);
+
+    assert.equal(result.status, 0);
+    assert.equal(result.stdout.trim(), "docker-desktop");
+  });
+
+  it("selects the matching gateway cluster when a gateway name is present", () => {
+    const result = runShell(
+      `source "${RUNTIME_SH}";
+       select_openshell_cluster_container "nemoclaw" $'openshell-cluster-alpha\\nopenshell-cluster-nemoclaw'`,
+    );
+
+    assert.equal(result.status, 0);
+    assert.equal(result.stdout.trim(), "openshell-cluster-nemoclaw");
+  });
+
+  it("fails on ambiguous cluster selection", () => {
+    const result = runShell(
+      `source "${RUNTIME_SH}";
+       select_openshell_cluster_container "" $'openshell-cluster-a\\nopenshell-cluster-b'`,
+    );
+
+    assert.notEqual(result.status, 0);
+  });
+
   it("finds the XDG Colima socket", () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-runtime-shell-"));
     const xdgColimaSocket = path.join(home, ".config/colima/default/docker.sock");

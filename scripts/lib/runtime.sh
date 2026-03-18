@@ -65,6 +65,25 @@ detect_docker_host() {
   return 1
 }
 
+docker_host_runtime() {
+  local docker_host="${1:-${DOCKER_HOST:-}}"
+
+  case "$docker_host" in
+    unix://*"/.colima/default/docker.sock"|unix://*"/.config/colima/default/docker.sock")
+      printf 'colima\n'
+      ;;
+    unix://*"/.docker/run/docker.sock")
+      printf 'docker-desktop\n'
+      ;;
+    "")
+      return 1
+      ;;
+    *)
+      printf 'custom\n'
+      ;;
+  esac
+}
+
 infer_container_runtime_from_info() {
   local info="${1:-}"
   local normalized
@@ -142,6 +161,41 @@ resolve_coredns_upstream() {
   nameserver="$(first_non_loopback_nameserver "$host_resolv_conf" || true)"
   if [ -n "$nameserver" ]; then
     printf '%s\n' "$nameserver"
+    return 0
+  fi
+
+  return 1
+}
+
+select_openshell_cluster_container() {
+  local gateway_name="${1:-}"
+  local containers="${2:-}"
+  local matches=""
+  local count=0
+  local match_count=0
+
+  if [ -z "$containers" ]; then
+    return 1
+  fi
+
+  count="$(printf '%s\n' "$containers" | awk 'NF { count += 1 } END { print count + 0 }')"
+
+  if [ -n "$gateway_name" ]; then
+    matches="$(printf '%s\n' "$containers" | grep -F -- "$gateway_name" || true)"
+    match_count="$(printf '%s\n' "$matches" | awk 'NF { count += 1 } END { print count + 0 }')"
+
+    if [ "$match_count" -eq 1 ]; then
+      printf '%s\n' "$matches"
+      return 0
+    fi
+
+    if [ "$match_count" -gt 1 ]; then
+      return 1
+    fi
+  fi
+
+  if [ "$count" -eq 1 ]; then
+    printf '%s\n' "$containers"
     return 0
   fi
 

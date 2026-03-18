@@ -9,6 +9,7 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
 const INSTALLER = path.join(__dirname, "..", "install.sh");
+const CURL_PIPE_INSTALLER = path.join(__dirname, "..", "scripts", "install.sh");
 const GITHUB_INSTALL_URL = "git+https://github.com/NVIDIA/NemoClaw.git";
 const TEST_SYSTEM_PATH = "/usr/bin:/bin";
 
@@ -187,5 +188,70 @@ exit 98
     assert.notEqual(result.status, 0);
     assert.match(output, new RegExp(GITHUB_INSTALL_URL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     assert.doesNotMatch(output, /npm install -g nemoclaw/);
+  });
+
+  it("does not silently prefer Colima when both macOS runtimes are available", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-macos-runtime-choice-"));
+    const fakeBin = path.join(tmp, "bin");
+    const colimaSocket = path.join(tmp, ".colima/default/docker.sock");
+    const dockerDesktopSocket = path.join(tmp, ".docker/run/docker.sock");
+    fs.mkdirSync(fakeBin);
+
+    writeExecutable(
+      path.join(fakeBin, "node"),
+      `#!/usr/bin/env bash
+if [ "$1" = "-v" ] || [ "$1" = "--version" ]; then
+  echo "v22.14.0"
+  exit 0
+fi
+exit 99
+`,
+    );
+
+    writeExecutable(
+      path.join(fakeBin, "npm"),
+      `#!/usr/bin/env bash
+if [ "$1" = "--version" ]; then
+  echo "10.9.2"
+  exit 0
+fi
+echo "/tmp/npm-prefix"
+exit 0
+`,
+    );
+
+    writeExecutable(
+      path.join(fakeBin, "docker"),
+      `#!/usr/bin/env bash
+if [ "$1" = "info" ]; then
+  exit 1
+fi
+exit 0
+`,
+    );
+
+    writeExecutable(
+      path.join(fakeBin, "colima"),
+      `#!/usr/bin/env bash
+echo "colima should not be started" >&2
+exit 97
+`,
+    );
+
+    const result = spawnSync("bash", [CURL_PIPE_INSTALLER], {
+      cwd: path.join(__dirname, ".."),
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        HOME: tmp,
+        PATH: `${fakeBin}:${TEST_SYSTEM_PATH}`,
+        NEMOCLAW_TEST_SOCKET_PATHS: `${colimaSocket}:${dockerDesktopSocket}`,
+      },
+    });
+
+    const output = `${result.stdout}${result.stderr}`;
+    assert.notEqual(result.status, 0);
+    assert.match(output, /Both Colima and Docker Desktop are available/);
+    assert.doesNotMatch(output, /colima should not be started/);
   });
 });

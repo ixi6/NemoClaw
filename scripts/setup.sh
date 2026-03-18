@@ -57,12 +57,23 @@ upsert_provider() {
 }
 
 # Resolve DOCKER_HOST for macOS user-scoped runtimes when needed.
+ORIGINAL_DOCKER_HOST="${DOCKER_HOST:-}"
 if docker_host="$(detect_docker_host)"; then
   export DOCKER_HOST="$docker_host"
-  if colima_socket="$(find_colima_docker_socket)"; then
-    warn "Using Colima Docker socket: $colima_socket"
-  elif docker_desktop_socket="$(find_docker_desktop_socket)"; then
-    warn "Using Docker Desktop socket: $docker_desktop_socket"
+  if [ -n "$ORIGINAL_DOCKER_HOST" ]; then
+    warn "Using DOCKER_HOST from environment: $docker_host"
+  else
+    case "$(docker_host_runtime "$docker_host" || true)" in
+      colima)
+        warn "Using Colima Docker socket: ${docker_host#unix://}"
+        ;;
+      docker-desktop)
+        warn "Using Docker Desktop socket: ${docker_host#unix://}"
+        ;;
+      custom)
+        warn "Using Docker host: $docker_host"
+        ;;
+    esac
   fi
 fi
 
@@ -99,7 +110,7 @@ info "Gateway is healthy"
 # 2. CoreDNS fix (Colima only)
 if [ "$CONTAINER_RUNTIME" = "colima" ]; then
   info "Patching CoreDNS for Colima..."
-  bash "$SCRIPT_DIR/fix-coredns.sh" 2>&1 || warn "CoreDNS patch failed (may not be needed)"
+  bash "$SCRIPT_DIR/fix-coredns.sh" nemoclaw 2>&1 || warn "CoreDNS patch failed (may not be needed)"
 fi
 
 # 3. Providers

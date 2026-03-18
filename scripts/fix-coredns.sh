@@ -35,9 +35,14 @@ if [ -z "${DOCKER_HOST:-}" ]; then
 fi
 
 # Find the cluster container
-CLUSTER=$(docker ps --filter "name=openshell-cluster" --format '{{.Names}}' | head -1)
+CLUSTERS="$(docker ps --filter "name=openshell-cluster" --format '{{.Names}}')"
+CLUSTER="$(select_openshell_cluster_container "$GATEWAY_NAME" "$CLUSTERS" || true)"
 if [ -z "$CLUSTER" ]; then
-  echo "ERROR: No openshell cluster container found."
+  if [ -n "$GATEWAY_NAME" ]; then
+    echo "ERROR: Could not uniquely determine the openshell cluster container for gateway '$GATEWAY_NAME'."
+  else
+    echo "ERROR: Could not uniquely determine the openshell cluster container."
+  fi
   exit 1
 fi
 
