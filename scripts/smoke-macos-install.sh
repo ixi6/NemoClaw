@@ -37,6 +37,14 @@ ANSWERS_PIPE=""
 ANSWER_WRITER_PID=""
 LOG_FOLLOW_PID=""
 
+stop_answer_writer() {
+  if [ -n "$ANSWER_WRITER_PID" ] && kill -0 "$ANSWER_WRITER_PID" 2>/dev/null; then
+    kill "$ANSWER_WRITER_PID" 2>/dev/null || true
+    wait "$ANSWER_WRITER_PID" 2>/dev/null || true
+  fi
+  ANSWER_WRITER_PID=""
+}
+
 usage() {
   cat <<'EOF'
 Usage: ./scripts/smoke-macos-install.sh [options]
@@ -194,6 +202,7 @@ run_install() {
   INSTALL_STATUS=$?
   set -e
   stop_log_follow
+  stop_answer_writer
   return 0
 }
 
@@ -252,9 +261,7 @@ verify_cleanup() {
 cleanup() {
   stop_log_follow
 
-  if [ -n "$ANSWER_WRITER_PID" ] && kill -0 "$ANSWER_WRITER_PID" 2>/dev/null; then
-    kill "$ANSWER_WRITER_PID" 2>/dev/null || true
-  fi
+  stop_answer_writer
 
   if [ -n "$ANSWERS_PIPE" ] && [ -p "$ANSWERS_PIPE" ]; then
     rm -f "$ANSWERS_PIPE"
