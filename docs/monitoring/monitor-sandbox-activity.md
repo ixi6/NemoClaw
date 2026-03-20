@@ -35,12 +35,6 @@ Run the status command to view the sandbox state, blueprint run information, and
 $ nemoclaw <name> status
 ```
 
-For machine-readable output, add the `--json` flag:
-
-```console
-$ nemoclaw <name> status
-```
-
 Key fields in the output include the following:
 
 - Sandbox state, which indicates whether the sandbox is running, stopped, or in an error state.
@@ -63,17 +57,6 @@ To follow the log output in real time:
 $ nemoclaw <name> logs -f
 ```
 
-To display a specific number of log lines:
-
-```console
-$ nemoclaw <name> logs
-```
-
-To view logs for a specific blueprint run instead of the most recent one:
-
-```console
-$ nemoclaw <name> logs
-```
 
 ## Monitor Network Activity in the TUI
 

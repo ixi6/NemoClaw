@@ -187,5 +187,4 @@ View the error output for the failed blueprint run:
 $ nemoclaw <name> logs
 ```
 
-If the run ID is unknown, omit `--run-id` to view logs from the most recent run.
 Use `--follow` to stream logs in real time while debugging.
