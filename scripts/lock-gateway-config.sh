@@ -20,3 +20,6 @@ fi
 
 chown root:root "$CONFIG"
 chmod 444 "$CONFIG"
+
+# Revoke our own sudoers entry — this privilege is single-use.
+rm -f /etc/sudoers.d/lock-gateway-config
