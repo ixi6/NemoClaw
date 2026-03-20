@@ -18,6 +18,13 @@ if [ ! -f "$CONFIG" ]; then
   exit 1
 fi
 
+# Reject symlinks — a sandbox user could point openclaw.json at an arbitrary
+# file (e.g. /etc/passwd) and trick root into chowning/chmoding it.
+if [ -L "$CONFIG" ]; then
+  echo "[lock-gateway-config] refusing to lock symlink: $CONFIG" >&2
+  exit 1
+fi
+
 chown root:root "$CONFIG"
 chmod 444 "$CONFIG"
 

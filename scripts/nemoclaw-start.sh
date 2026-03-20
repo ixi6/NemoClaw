@@ -87,14 +87,12 @@ lock_gateway_config() {
   # CORS origins, or other gateway security settings.  Uses a narrow
   # sudoers entry to escalate to root for the chown/chmod only.
   #
-  # Usage: lock_gateway_config [wait_for_token]
-  #   wait_for_token  — "true" (default) polls up to 30s for the gateway
-  #                     to write its auth token before locking.  Pass
-  #                     "false" in the exec path where no gateway is running.
+  # Polls up to 30s for the gateway to write its auth token before locking.
+  # If the token never appears, skips locking so the gateway can still write.
   # Ref: https://github.com/NVIDIA/NemoClaw/issues/514
-  local config_path wait_for_token
+  local config_path token_found
   config_path="${HOME:-/sandbox}/.openclaw/openclaw.json"
-  wait_for_token="${1:-true}"
+  token_found=false
 
   if [ ! -f "$config_path" ]; then
     return
@@ -107,21 +105,26 @@ lock_gateway_config() {
     return
   fi
 
-  # In the standard path, wait for the gateway to finish its initial config
-  # write (token generation) before locking.  Skip in the exec path where
-  # no gateway is running — avoids a 30s hang.
-  if [ "$wait_for_token" = "true" ]; then
-    local i
-    for i in $(seq 1 30); do
-      if python3 -c "
+  # Wait for the gateway to finish its initial config write (token generation).
+  # If the token never appears after 30s, skip locking so the gateway can
+  # still write it — locking without the token would cause a permanent
+  # auth failure.
+  local i
+  for i in $(seq 1 30); do
+    if python3 -c "
 import json, sys
 cfg = json.load(open('$config_path'))
 sys.exit(0 if cfg.get('gateway',{}).get('auth',{}).get('token') else 1)
 " 2>/dev/null; then
-        break
-      fi
-      sleep 1
-    done
+      token_found=true
+      break
+    fi
+    sleep 1
+  done
+
+  if [ "$token_found" = "false" ]; then
+    echo "[security] WARNING: gateway token not found after 30s, skipping config lock to avoid auth failure: $config_path" >&2
+    return
   fi
 
   sudo /usr/local/bin/lock-gateway-config
@@ -225,7 +228,6 @@ fix_openclaw_config
 openclaw plugins install /opt/nemoclaw > /dev/null 2>&1 || true
 
 if [ ${#NEMOCLAW_CMD[@]} -gt 0 ]; then
-  lock_gateway_config false
   exec "${NEMOCLAW_CMD[@]}"
 fi
 
