@@ -149,13 +149,12 @@ function pullNimImage(model) {
 
   let lastError = null;
   for (const image of images) {
-    try {
-      console.log(`  Pulling NIM image: ${image}`);
-      runner.run(`docker pull ${image}`);
+    console.log(`  Pulling NIM image: ${image}`);
+    const result = runner.run(`docker pull ${image}`, { ignoreError: true });
+    if (result.status === 0) {
       return image;
-    } catch (error) {
-      lastError = error;
     }
+    lastError = new Error(`docker pull failed for ${image} (exit ${result.status || 1})`);
   }
 
   if (lastError) {

@@ -45,8 +45,9 @@ describe("nim", () => {
       runner.run = (command) => {
         commands.push(command);
         if (command.includes("nemotron-3-nano-30b-a3b:latest")) {
-          throw new Error("denied");
+          return { status: 1 };
         }
+        return { status: 0 };
       };
 
       try {
