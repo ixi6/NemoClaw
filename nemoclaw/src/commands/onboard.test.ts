@@ -14,6 +14,7 @@ vi.mock("../onboard/config.js", () => ({
   describeOnboardProvider: vi.fn((config: { endpointType: string }) => {
     if (config.endpointType === "openai") return "OpenAI";
     if (config.endpointType === "anthropic") return "Anthropic";
+    if (config.endpointType === "gemini") return "Google Gemini";
     return "NVIDIA hosted";
   }),
   loadOnboardConfig: vi.fn(() => null),
@@ -241,6 +242,71 @@ describe("cliOnboard", () => {
     );
   });
 
+  it("applies Gemini onboarding with the official OpenAI-compatible endpoint", async () => {
+    const { logger } = captureLogger();
+    vi.mocked(validateApiKey).mockResolvedValueOnce({
+      valid: true,
+      models: ["gemini-2.5-flash", "gemini-3-flash-preview"],
+      error: null,
+    });
+
+    await cliOnboard({
+      provider: "gemini",
+      apiKey: "AIza-test-secret",
+      endpointUrl: "https://generativelanguage.googleapis.com/v1beta/openai/",
+      model: "gemini-3-flash-preview",
+      logger,
+      pluginConfig,
+    });
+
+    expect(validateApiKey).toHaveBeenCalledWith(
+      "AIza-test-secret",
+      "https://generativelanguage.googleapis.com/v1beta/openai/",
+      "gemini",
+    );
+    expect(execFileSync).toHaveBeenCalledTimes(2);
+    expect(execFileSync).toHaveBeenNthCalledWith(
+      1,
+      "openshell",
+      [
+        "provider",
+        "create",
+        "--name",
+        "gemini-api",
+        "--type",
+        "openai",
+        "--credential",
+        "GEMINI_API_KEY",
+        "--config",
+        "OPENAI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/",
+      ],
+      expect.objectContaining({
+        env: expect.objectContaining({
+          GEMINI_API_KEY: "AIza-test-secret",
+        }),
+      }),
+    );
+    expect(execFileSync).toHaveBeenNthCalledWith(
+      2,
+      "openshell",
+      ["inference", "set", "--no-verify", "--provider", "gemini-api", "--model", "gemini-3-flash-preview"],
+      expect.objectContaining({
+        env: expect.objectContaining({
+          GEMINI_API_KEY: "AIza-test-secret",
+        }),
+      }),
+    );
+    expect(saveOnboardConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        endpointType: "gemini",
+        endpointUrl: "https://generativelanguage.googleapis.com/v1beta/openai/",
+        credentialEnv: "GEMINI_API_KEY",
+        model: "gemini-3-flash-preview",
+        provider: "gemini-api",
+      }),
+    );
+  });
+
   it("uses a provider-first interactive flow for OpenAI without prompting for the default base URL", async () => {
     const { logger } = captureLogger();
     vi.mocked(promptSelect)
@@ -259,6 +325,7 @@ describe("cliOnboard", () => {
       expect.arrayContaining([
         expect.objectContaining({ label: "NVIDIA hosted", value: "build" }),
         expect.objectContaining({ label: "OpenAI", value: "openai" }),
+        expect.objectContaining({ label: "Google Gemini", value: "gemini" }),
         expect.objectContaining({ label: "Other compatible endpoint", value: "custom" }),
       ]),
     );
@@ -311,6 +378,44 @@ describe("cliOnboard", () => {
         { label: "claude-sonnet-4-5 (recommended)", value: "claude-sonnet-4-5" },
       ],
       1,
+    );
+  });
+
+  it("offers Gemini in the provider menu and prefers Gemini default models", async () => {
+    const { logger } = captureLogger();
+    vi.mocked(promptSelect)
+      .mockResolvedValueOnce("gemini")
+      .mockResolvedValueOnce("gemini-3-flash-preview");
+    vi.mocked(promptInput).mockResolvedValueOnce("AIza-live-secret");
+    vi.mocked(validateApiKey).mockResolvedValueOnce({
+      valid: true,
+      models: ["gemini-2.5-flash", "gemini-3-flash-preview"],
+      error: null,
+    });
+
+    await cliOnboard({
+      logger,
+      pluginConfig,
+    });
+
+    expect(promptInput).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining("Gemini API key"),
+      expect.objectContaining({ secret: true }),
+    );
+    expect(validateApiKey).toHaveBeenCalledWith(
+      "AIza-live-secret",
+      "https://generativelanguage.googleapis.com/v1beta/openai/",
+      "gemini",
+    );
+    expect(promptSelect).toHaveBeenNthCalledWith(
+      2,
+      "Select your primary model:",
+      [
+        { label: "gemini-3-flash-preview", value: "gemini-3-flash-preview" },
+        { label: "gemini-2.5-flash", value: "gemini-2.5-flash" },
+      ],
+      0,
     );
   });
 });

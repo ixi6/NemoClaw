@@ -6,7 +6,16 @@ import { join } from "node:path";
 
 const CONFIG_DIR = join(process.env.HOME ?? "/tmp", ".nemoclaw");
 
-export type EndpointType = "build" | "openai" | "anthropic" | "ncp" | "nim-local" | "vllm" | "ollama" | "custom";
+export type EndpointType =
+  | "build"
+  | "openai"
+  | "anthropic"
+  | "gemini"
+  | "ncp"
+  | "nim-local"
+  | "vllm"
+  | "ollama"
+  | "custom";
 
 export interface NemoClawOnboardConfig {
   endpointType: EndpointType;
@@ -40,6 +49,8 @@ export function describeOnboardProvider(config: NemoClawOnboardConfig): string {
       return "OpenAI";
     case "anthropic":
       return "Anthropic";
+    case "gemini":
+      return "Google Gemini";
     case "ollama":
       return "Local Ollama";
     case "vllm":
