@@ -223,7 +223,9 @@ function verifyInferenceRoute(provider, model) {
     console.error("  OpenShell inference route was not configured.");
     process.exit(1);
   }
-  if (!gatewaySection.includes(`Provider: ${provider}`) || !gatewaySection.includes(`Model: ${model}`)) {
+  const providerMatches = gatewaySection.includes(`Provider: ${provider}`);
+  const modelMatches = gatewaySection.includes(`Model: ${model}`);
+  if (!providerMatches || !modelMatches) {
     console.error("  OpenShell inference route does not match the requested provider/model.");
     console.error(`  Expected provider: ${provider}`);
     console.error(`  Expected model: ${model}`);

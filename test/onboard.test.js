@@ -354,4 +354,71 @@ const { setupInference } = require(${onboardPath});
     const commands = JSON.parse(result.stdout.trim().split("\n").pop());
     assert.equal(commands.length, 3);
   });
+
+  it("accepts gateway inference output that omits the Route line", () => {
+    const repoRoot = path.join(__dirname, "..");
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-onboard-inference-route-"));
+    const fakeBin = path.join(tmpDir, "bin");
+    const scriptPath = path.join(tmpDir, "inference-route-check.js");
+    const onboardPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "onboard.js"));
+    const runnerPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "runner.js"));
+    const registryPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "registry.js"));
+
+    fs.mkdirSync(fakeBin, { recursive: true });
+    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+
+    const script = String.raw`
+const runner = require(${runnerPath});
+const registry = require(${registryPath});
+const commands = [];
+runner.run = (command, opts = {}) => {
+  commands.push({ command, env: opts.env || null });
+  return { status: 0 };
+};
+runner.runCapture = (command) => {
+  if (command.includes("inference") && command.includes("get")) {
+    return [
+      "Gateway inference:",
+      "",
+      "  Provider: openai-api",
+      "  Model: gpt-5.4",
+      "  Version: 1",
+      "",
+      "System inference:",
+      "",
+      "  Not configured",
+    ].join("\\n");
+  }
+  return "";
+};
+registry.updateSandbox = () => true;
+process.env.OPENAI_API_KEY = "sk-secret-value";
+process.env.OPENSHELL_GATEWAY = "nemoclaw";
+
+const { setupInference } = require(${onboardPath});
+
+(async () => {
+  await setupInference("test-box", "gpt-5.4", "openai-api", "https://api.openai.com/v1", "OPENAI_API_KEY");
+  console.log(JSON.stringify(commands));
+})().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
+`;
+    fs.writeFileSync(scriptPath, script);
+
+    const result = spawnSync(process.execPath, [scriptPath], {
+      cwd: repoRoot,
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        HOME: tmpDir,
+        PATH: `${fakeBin}:${process.env.PATH || ""}`,
+      },
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    const commands = JSON.parse(result.stdout.trim().split("\n").pop());
+    assert.equal(commands.length, 3);
+  });
 });
