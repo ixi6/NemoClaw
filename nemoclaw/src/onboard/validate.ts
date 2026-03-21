@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { EndpointType } from "./config.js";
+
 export interface ValidationResult {
   valid: boolean;
   models: string[];
@@ -10,16 +12,27 @@ export interface ValidationResult {
 export async function validateApiKey(
   apiKey: string,
   endpointUrl: string,
+  endpointType: EndpointType = "openai",
 ): Promise<ValidationResult> {
-  const url = `${endpointUrl.replace(/\/+$/, "")}/models`;
+  const baseUrl = endpointUrl.replace(/\/+$/, "");
+  const url = endpointType === "anthropic" ? `${baseUrl}/v1/models` : `${baseUrl}/models`;
   const controller = new AbortController();
   const timeout = setTimeout(() => {
     controller.abort();
   }, 10_000);
 
   try {
+    const headers: Record<string, string> =
+      endpointType === "anthropic"
+        ? {
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01",
+          }
+        : {
+            Authorization: `Bearer ${apiKey}`,
+          };
     const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${apiKey}` },
+      headers,
       signal: controller.signal,
     });
 

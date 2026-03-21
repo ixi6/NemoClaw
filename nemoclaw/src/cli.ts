@@ -110,10 +110,10 @@ export function registerCliCommands(ctx: PluginCliContext, api: OpenClawPluginAp
     .command("onboard")
     .description("Interactive setup: configure an inference provider, credential, and model")
     .option("--api-key <key>", "API key for endpoints that require one (skips prompt)")
-    .option("--provider <type>", "Provider type: build, openai, ncp, ollama, custom (nim-local and vllm are experimental)")
+    .option("--provider <type>", "Provider type: build, openai, anthropic, ncp, ollama, custom (nim-local and vllm are experimental)")
     .option("--endpoint <type>", "Deprecated alias for --provider")
     .option("--ncp-partner <name>", "NVIDIA Cloud Partner name (when provider is ncp)")
-    .option("--endpoint-url <url>", "Endpoint URL override (for openai, ncp, nim-local, ollama, or custom)")
+    .option("--endpoint-url <url>", "Endpoint URL override (for openai, anthropic, ncp, nim-local, ollama, or custom)")
     .option("--model <model>", "Model ID to use")
     .action(
       async (opts: {

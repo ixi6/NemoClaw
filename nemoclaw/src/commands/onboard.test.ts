@@ -11,9 +11,11 @@ vi.mock("node:child_process", () => ({
 
 vi.mock("../onboard/config.js", () => ({
   describeOnboardEndpoint: vi.fn((config: { endpointType: string; endpointUrl: string }) => `${config.endpointType} (${config.endpointUrl})`),
-  describeOnboardProvider: vi.fn((config: { endpointType: string }) =>
-    config.endpointType === "openai" ? "OpenAI" : "NVIDIA hosted",
-  ),
+  describeOnboardProvider: vi.fn((config: { endpointType: string }) => {
+    if (config.endpointType === "openai") return "OpenAI";
+    if (config.endpointType === "anthropic") return "Anthropic";
+    return "NVIDIA hosted";
+  }),
   loadOnboardConfig: vi.fn(() => null),
   saveOnboardConfig: vi.fn(),
 }));
@@ -175,6 +177,70 @@ describe("cliOnboard", () => {
     );
   });
 
+  it("applies Anthropic onboarding with the native provider type and recommended model input", async () => {
+    const { logger } = captureLogger();
+    vi.mocked(validateApiKey).mockResolvedValueOnce({
+      valid: true,
+      models: ["claude-opus-4-6", "claude-sonnet-4-5"],
+      error: null,
+    });
+
+    await cliOnboard({
+      provider: "anthropic",
+      apiKey: "sk-ant-test-secret",
+      endpointUrl: "https://api.anthropic.com",
+      model: "claude-sonnet-4-5",
+      logger,
+      pluginConfig,
+    });
+
+    expect(validateApiKey).toHaveBeenCalledWith(
+      "sk-ant-test-secret",
+      "https://api.anthropic.com",
+      "anthropic",
+    );
+    expect(execFileSync).toHaveBeenCalledTimes(2);
+    expect(execFileSync).toHaveBeenNthCalledWith(
+      1,
+      "openshell",
+      [
+        "provider",
+        "create",
+        "--name",
+        "anthropic-prod",
+        "--type",
+        "anthropic",
+        "--credential",
+        "ANTHROPIC_API_KEY",
+      ],
+      expect.objectContaining({
+        encoding: "utf-8",
+        env: expect.objectContaining({
+          ANTHROPIC_API_KEY: "sk-ant-test-secret",
+        }),
+      }),
+    );
+    expect(execFileSync).toHaveBeenNthCalledWith(
+      2,
+      "openshell",
+      ["inference", "set", "--provider", "anthropic-prod", "--model", "claude-sonnet-4-5"],
+      expect.objectContaining({
+        env: expect.objectContaining({
+          ANTHROPIC_API_KEY: "sk-ant-test-secret",
+        }),
+      }),
+    );
+    expect(saveOnboardConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        endpointType: "anthropic",
+        endpointUrl: "https://api.anthropic.com",
+        credentialEnv: "ANTHROPIC_API_KEY",
+        model: "claude-sonnet-4-5",
+        provider: "anthropic-prod",
+      }),
+    );
+  });
+
   it("uses a provider-first interactive flow for OpenAI without prompting for the default base URL", async () => {
     const { logger } = captureLogger();
     vi.mocked(promptSelect)
@@ -201,6 +267,50 @@ describe("cliOnboard", () => {
       expect.stringContaining("OpenAI API key"),
       expect.objectContaining({ secret: true }),
     );
-    expect(validateApiKey).toHaveBeenCalledWith("sk-live-secret", "https://api.openai.com/v1");
+    expect(validateApiKey).toHaveBeenCalledWith("sk-live-secret", "https://api.openai.com/v1", "openai");
+  });
+
+  it("offers Anthropic in the provider menu and defaults its model prompt", async () => {
+    const { logger } = captureLogger();
+    vi.mocked(promptSelect).mockResolvedValueOnce("anthropic");
+    vi.mocked(promptInput).mockResolvedValueOnce("sk-ant-live-secret");
+    vi.mocked(validateApiKey).mockResolvedValueOnce({
+      valid: true,
+      models: ["claude-opus-4-6", "claude-sonnet-4-5"],
+      error: null,
+    });
+    vi.mocked(promptSelect).mockResolvedValueOnce("claude-sonnet-4-5");
+
+    await cliOnboard({
+      logger,
+      pluginConfig,
+    });
+
+    expect(promptSelect).toHaveBeenNthCalledWith(
+      1,
+      "Where should NemoClaw get its model?",
+      expect.arrayContaining([
+        expect.objectContaining({ label: "Anthropic", value: "anthropic" }),
+      ]),
+    );
+    expect(promptInput).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining("Anthropic API key"),
+      expect.objectContaining({ secret: true }),
+    );
+    expect(validateApiKey).toHaveBeenCalledWith(
+      "sk-ant-live-secret",
+      "https://api.anthropic.com",
+      "anthropic",
+    );
+    expect(promptSelect).toHaveBeenNthCalledWith(
+      2,
+      "Select your primary model:",
+      [
+        { label: "claude-opus-4-6", value: "claude-opus-4-6" },
+        { label: "claude-sonnet-4-5 (recommended)", value: "claude-sonnet-4-5" },
+      ],
+      1,
+    );
   });
 });

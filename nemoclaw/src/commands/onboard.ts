@@ -25,8 +25,8 @@ export interface OnboardOptions {
   pluginConfig: NemoClawConfig;
 }
 
-const ENDPOINT_TYPES: EndpointType[] = ["build", "openai", "ncp", "nim-local", "vllm", "ollama", "custom"];
-const SUPPORTED_ENDPOINT_TYPES: EndpointType[] = ["build", "openai", "ncp", "ollama", "custom"];
+const ENDPOINT_TYPES: EndpointType[] = ["build", "openai", "anthropic", "ncp", "nim-local", "vllm", "ollama", "custom"];
+const SUPPORTED_ENDPOINT_TYPES: EndpointType[] = ["build", "openai", "anthropic", "ncp", "ollama", "custom"];
 
 function isExperimentalEnabled(): boolean {
   return process.env.NEMOCLAW_EXPERIMENTAL === "1";
@@ -34,6 +34,7 @@ function isExperimentalEnabled(): boolean {
 
 const BUILD_ENDPOINT_URL = "https://integrate.api.nvidia.com/v1";
 const OPENAI_ENDPOINT_URL = "https://api.openai.com/v1";
+const ANTHROPIC_ENDPOINT_URL = "https://api.anthropic.com";
 const HOST_GATEWAY_URL = "http://host.openshell.internal";
 
 const DEFAULT_MODELS = [
@@ -46,6 +47,7 @@ const DEFAULT_MODELS = [
 ];
 const DEFAULT_OLLAMA_MODEL = "nemotron-3-nano:30b";
 const OPENAI_DEFAULT_MODEL_CANDIDATES = ["gpt-5.2", "gpt-5.1", "gpt-5", "gpt-4.1"];
+const ANTHROPIC_DEFAULT_MODEL = "claude-sonnet-4-5";
 const CUSTOM_COMPATIBLE_PROVIDER_NAME = "compatible-endpoint";
 
 function resolveProfile(endpointType: EndpointType): string {
@@ -54,6 +56,8 @@ function resolveProfile(endpointType: EndpointType): string {
       return "default";
     case "openai":
       return "openai";
+    case "anthropic":
+      return "anthropic";
     case "ncp":
     case "custom":
       return "ncp";
@@ -72,6 +76,8 @@ function resolveProviderName(endpointType: EndpointType): string {
       return "nvidia-prod";
     case "openai":
       return "openai-api";
+    case "anthropic":
+      return "anthropic-prod";
     case "ncp":
       return "nvidia-ncp";
     case "custom":
@@ -89,6 +95,8 @@ function resolveCredentialEnv(endpointType: EndpointType): string {
   switch (endpointType) {
     case "openai":
       return "OPENAI_API_KEY";
+    case "anthropic":
+      return "ANTHROPIC_API_KEY";
     case "build":
     case "ncp":
     case "custom":
@@ -106,7 +114,9 @@ function isNonInteractive(opts: OnboardOptions): boolean {
   if (!provider || !opts.model) return false;
   const ep = provider as EndpointType;
   if (endpointRequiresApiKey(ep) && !opts.apiKey) return false;
-  if ((ep === "ncp" || ep === "nim-local" || ep === "custom") && !opts.endpointUrl) return false;
+  if ((ep === "anthropic" || ep === "ncp" || ep === "nim-local" || ep === "custom") && !opts.endpointUrl) {
+    return false;
+  }
   if (ep === "ncp" && !opts.ncpPartner) return false;
   return true;
 }
@@ -114,6 +124,7 @@ function isNonInteractive(opts: OnboardOptions): boolean {
 function endpointRequiresApiKey(endpointType: EndpointType): boolean {
   return (
     endpointType === "openai" ||
+    endpointType === "anthropic" ||
     endpointType === "build" ||
     endpointType === "ncp" ||
     endpointType === "nim-local" ||
@@ -138,6 +149,8 @@ function defaultEndpointUrl(endpointType: EndpointType): string | null {
       return BUILD_ENDPOINT_URL;
     case "openai":
       return OPENAI_ENDPOINT_URL;
+    case "anthropic":
+      return ANTHROPIC_ENDPOINT_URL;
     case "vllm":
       return `${HOST_GATEWAY_URL}:8000/v1`;
     case "ollama":
@@ -154,6 +167,9 @@ function apiKeyLabel(endpointType: EndpointType, credentialEnv: string): string 
   if (endpointType === "openai") {
     return `OpenAI API key (${credentialEnv})`;
   }
+  if (endpointType === "anthropic") {
+    return `Anthropic API key (${credentialEnv})`;
+  }
   return `API key (${credentialEnv})`;
 }
 
@@ -164,6 +180,8 @@ function getApiKeyHelp(endpointType: EndpointType): string | null {
       return "Get an API key from: https://build.nvidia.com/settings/api-keys";
     case "openai":
       return "Get an API key from: https://platform.openai.com/api-keys";
+    case "anthropic":
+      return "Get an API key from: https://console.anthropic.com/settings/keys";
     default:
       return null;
   }
@@ -173,6 +191,8 @@ function providerTypeForEndpoint(endpointType: EndpointType): string {
   switch (endpointType) {
     case "build":
       return "nvidia";
+    case "anthropic":
+      return "anthropic";
     default:
       return "openai";
   }
@@ -186,6 +206,29 @@ function buildProviderCommandArgs(
   endpointUrl: string,
 ): string[] {
   if (endpointType === "build") {
+    return action === "create"
+      ? [
+          "provider",
+          "create",
+          "--name",
+          providerName,
+          "--type",
+          providerTypeForEndpoint(endpointType),
+          "--credential",
+          credentialEnv,
+        ]
+      : [
+          "provider",
+          "update",
+          providerName,
+          "--type",
+          providerTypeForEndpoint(endpointType),
+          "--credential",
+          credentialEnv,
+        ];
+  }
+
+  if (endpointType === "anthropic") {
     return action === "create"
       ? [
           "provider",
@@ -312,6 +355,11 @@ async function promptEndpoint(
       value: "openai",
       hint: "uses OpenAI defaults; base URL override available",
     },
+    {
+      label: "Anthropic",
+      value: "anthropic",
+      hint: "native Claude API via OpenShell",
+    },
   ];
 
   options.push({
@@ -420,6 +468,7 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
   switch (endpointType) {
     case "build":
     case "openai":
+    case "anthropic":
       endpointUrl = opts.endpointUrl ?? defaultEndpointUrl(endpointType) ?? "";
       break;
     case "ncp":
@@ -492,7 +541,7 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
     endpointType === "vllm" || endpointType === "ollama" || endpointType === "nim-local";
   logger.info("");
   logger.info(`Validating ${requiresApiKey ? "credential" : "endpoint"} against ${endpointUrl}...`);
-  const validation = await validateApiKey(apiKey, endpointUrl);
+  const validation = await validateApiKey(apiKey, endpointUrl, endpointType);
 
   if (!validation.valid) {
     if (isLocalEndpoint) {
@@ -536,6 +585,13 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
             value: id,
           }))
         : [];
+    const curatedAnthropicOptions =
+      endpointType === "anthropic"
+        ? validation.models.map((id) => ({
+            label: id === ANTHROPIC_DEFAULT_MODEL ? `${id} (recommended)` : id,
+            value: id,
+          }))
+        : [];
     const defaultIndex =
       endpointType === "ollama"
         ? Math.max(
@@ -545,10 +601,15 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
         : endpointType === "openai"
           ? Math.max(
               0,
-              curatedOpenAiOptions.findIndex(
-                (option) =>
+            curatedOpenAiOptions.findIndex(
+              (option) =>
                   option.value === pickRecommendedModel(validation.models, OPENAI_DEFAULT_MODEL_CANDIDATES),
               ),
+            )
+        : endpointType === "anthropic"
+          ? Math.max(
+              0,
+              curatedAnthropicOptions.findIndex((option) => option.value === ANTHROPIC_DEFAULT_MODEL),
             )
         : 0;
     const modelOptions =
@@ -556,6 +617,8 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
         ? curatedCloudOptions
         : curatedOpenAiOptions.length > 0
           ? curatedOpenAiOptions
+        : curatedAnthropicOptions.length > 0
+          ? curatedAnthropicOptions
         : discoveredModelOptions.length > 0
           ? discoveredModelOptions
           : DEFAULT_MODELS.map((m) => ({ label: `${m.label} (${m.id})`, value: m.id }));
