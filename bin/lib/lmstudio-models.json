@@ -1,0 +1,6 @@
+[
+  { "minMB": 23000, "model": "qwen3.5-9b@q4_k_m",       "label": "Qwen3.5 9B (24+ GB)" },
+  { "minMB": 11000, "model": "gemma-3-12b-it@q4_k_m",   "label": "Gemma 3 12B (12+ GB)" },
+  { "minMB": 7000,  "model": "gemma-3-4b-it@q4_k_m",    "label": "Gemma 3 4B (8+ GB)" },
+  { "minMB": 0,     "model": "qwen3-0.6b@q4_k_m",       "label": "Qwen3 0.6B (any GPU)" }
+]
