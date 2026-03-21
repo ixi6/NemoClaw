@@ -153,16 +153,20 @@ async function deploy(instanceName) {
   run(`ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR ${qname} 'mkdir -p /home/ubuntu/nemoclaw'`);
   run(`rsync -az --delete --exclude node_modules --exclude .git --exclude src -e "ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR" "${ROOT}/scripts" "${ROOT}/Dockerfile" "${ROOT}/nemoclaw" "${ROOT}/nemoclaw-blueprint" "${ROOT}/bin" "${ROOT}/package.json" ${qname}:/home/ubuntu/nemoclaw/`);
 
-  const envLines = [`NVIDIA_API_KEY=${process.env.NVIDIA_API_KEY}`];
+  const envLines = [`NVIDIA_API_KEY=${shellQuote(process.env.NVIDIA_API_KEY || "")}`];
   const ghToken = process.env.GITHUB_TOKEN;
-  if (ghToken) envLines.push(`GITHUB_TOKEN=${ghToken}`);
+  if (ghToken) envLines.push(`GITHUB_TOKEN=${shellQuote(ghToken)}`);
   const tgToken = getCredential("TELEGRAM_BOT_TOKEN");
-  if (tgToken) envLines.push(`TELEGRAM_BOT_TOKEN=${tgToken}`);
-  const envTmp = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-env-")) + "/env";
+  if (tgToken) envLines.push(`TELEGRAM_BOT_TOKEN=${shellQuote(tgToken)}`);
+  const envDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-env-"));
+  const envTmp = path.join(envDir, "env");
   fs.writeFileSync(envTmp, envLines.join("\n") + "\n", { mode: 0o600 });
-  run(`scp -q -o StrictHostKeyChecking=no -o LogLevel=ERROR ${shellQuote(envTmp)} ${qname}:/home/ubuntu/nemoclaw/.env`);
-  fs.unlinkSync(envTmp);
-  fs.rmdirSync(path.dirname(envTmp));
+  try {
+    run(`scp -q -o StrictHostKeyChecking=no -o LogLevel=ERROR ${shellQuote(envTmp)} ${qname}:/home/ubuntu/nemoclaw/.env`);
+  } finally {
+    try { fs.unlinkSync(envTmp); } catch {}
+    try { fs.rmdirSync(envDir); } catch {}
+  }
 
   console.log("  Running setup...");
   runInteractive(`ssh -t -o StrictHostKeyChecking=no -o LogLevel=ERROR ${qname} 'cd /home/ubuntu/nemoclaw && set -a && . .env && set +a && bash scripts/brev-setup.sh'`);

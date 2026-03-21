@@ -170,15 +170,17 @@ function applyPreset(sandboxName, presetName) {
   }
 
   // Write temp file and apply
-  const tmpFile = path.join(os.tmpdir(), `nemoclaw-policy-${Date.now()}.yaml`);
-  fs.writeFileSync(tmpFile, merged, "utf-8");
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-policy-"));
+  const tmpFile = path.join(tmpDir, "policy.yaml");
+  fs.writeFileSync(tmpFile, merged, { encoding: "utf-8", mode: 0o600 });
 
   try {
     run(buildPolicySetCommand(tmpFile, sandboxName));
 
     console.log(`  Applied preset: ${presetName}`);
   } finally {
-    fs.unlinkSync(tmpFile);
+    try { fs.unlinkSync(tmpFile); } catch {}
+    try { fs.rmdirSync(tmpDir); } catch {}
   }
 
   // Update registry

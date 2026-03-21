@@ -179,16 +179,25 @@ describe("runner helpers", () => {
     });
 
     it("CLI rejects malicious sandbox names before shell commands (e2e)", () => {
-      const result = spawnSync("node", [
-        path.join(__dirname, "..", "bin", "nemoclaw.js"),
-        "test; whoami",
-        "connect",
-      ], {
-        encoding: "utf-8",
-        timeout: 10000,
-        cwd: path.join(__dirname, ".."),
-      });
-      assert.notEqual(result.status, 0, "CLI should reject malicious sandbox name");
+      const fs = require("fs");
+      const os = require("os");
+      const canaryDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-canary-"));
+      const canary = path.join(canaryDir, "executed");
+      try {
+        const result = spawnSync("node", [
+          path.join(__dirname, "..", "bin", "nemoclaw.js"),
+          `test; touch ${canary}`,
+          "connect",
+        ], {
+          encoding: "utf-8",
+          timeout: 10000,
+          cwd: path.join(__dirname, ".."),
+        });
+        assert.notEqual(result.status, 0, "CLI should reject malicious sandbox name");
+        assert.equal(fs.existsSync(canary), false, "shell payload must never execute");
+      } finally {
+        fs.rmSync(canaryDir, { recursive: true, force: true });
+      }
     });
 
     it("telegram bridge validates SANDBOX_NAME on startup", () => {

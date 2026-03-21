@@ -486,9 +486,9 @@ async function createSandbox(gpu) {
 
   console.log(`  Creating sandbox '${sandboxName}' (this takes a few minutes on first run)...`);
   const chatUiUrl = process.env.CHAT_UI_URL || 'http://127.0.0.1:18789';
-  const envArgs = [`CHAT_UI_URL=${chatUiUrl}`];
+  const envArgs = [`CHAT_UI_URL=${shellQuote(chatUiUrl)}`];
   if (process.env.NVIDIA_API_KEY) {
-    envArgs.push(`NVIDIA_API_KEY=${process.env.NVIDIA_API_KEY}`);
+    envArgs.push(`NVIDIA_API_KEY=${shellQuote(process.env.NVIDIA_API_KEY)}`);
   }
 
   // Run without piping through awk — the pipe masked non-zero exit codes
