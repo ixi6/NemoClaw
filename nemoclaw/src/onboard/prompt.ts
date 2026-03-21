@@ -10,13 +10,42 @@ export interface SelectOption {
   hint?: string;
 }
 
-export async function promptInput(question: string, defaultValue?: string): Promise<string> {
+export interface PromptInputOptions {
+  defaultValue?: string;
+  secret?: boolean;
+}
+
+export async function promptInput(
+  question: string,
+  defaultValueOrOptions?: string | PromptInputOptions,
+): Promise<string> {
+  const options =
+    typeof defaultValueOrOptions === "string"
+      ? { defaultValue: defaultValueOrOptions }
+      : defaultValueOrOptions ?? {};
   const rl = createInterface({ input: stdin, output: stdout });
-  const suffix = defaultValue ? ` [${defaultValue}]` : "";
+  const suffix = options.defaultValue ? ` [${options.defaultValue}]` : "";
+  if (options.secret && stdin.isTTY) {
+    (rl as typeof rl & { stdoutMuted?: boolean }).stdoutMuted = true;
+    (
+      rl as typeof rl & {
+        _writeToOutput?: (value: string) => void;
+        stdoutMuted?: boolean;
+        output: NodeJS.WritableStream;
+      }
+    )._writeToOutput = function _writeToOutput(value: string): void {
+      if (!this.stdoutMuted) {
+        this.output.write(value);
+      }
+    };
+  }
   try {
     const answer = await rl.question(`${question}${suffix}: `);
+    if (options.secret && stdin.isTTY) {
+      stdout.write("\n");
+    }
     const trimmed = answer.trim();
-    return trimmed || defaultValue || "";
+    return trimmed || options.defaultValue || "";
   } finally {
     rl.close();
   }

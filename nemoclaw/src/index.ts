@@ -194,7 +194,9 @@ function registeredProviderForConfig(
   const authLabel =
     providerCredentialEnv === "NVIDIA_API_KEY"
       ? `NVIDIA API Key (${providerCredentialEnv})`
-      : `OpenAI API Key (${providerCredentialEnv})`;
+      : providerCredentialEnv === "OPENAI_API_KEY"
+        ? `OpenAI API Key (${providerCredentialEnv})`
+        : `API Key (${providerCredentialEnv})`;
 
   return {
     id: "inference",
@@ -262,7 +264,7 @@ export default function register(api: OpenClawPluginApi): void {
   api.registerProvider(registeredProviderForConfig(onboardCfg, providerCredentialEnv));
 
   const bannerEndpoint = onboardCfg ? describeOnboardEndpoint(onboardCfg) : "build.nvidia.com";
-  const bannerProvider = onboardCfg ? describeOnboardProvider(onboardCfg) : "NVIDIA Cloud API";
+  const bannerProvider = onboardCfg ? describeOnboardProvider(onboardCfg) : "NVIDIA hosted";
   const bannerModel = onboardCfg?.model ?? "nvidia/nemotron-3-super-120b-a12b";
 
   api.logger.info("");

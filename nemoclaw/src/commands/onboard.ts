@@ -16,6 +16,7 @@ import { validateApiKey, maskApiKey } from "../onboard/validate.js";
 
 export interface OnboardOptions {
   apiKey?: string;
+  provider?: string;
   endpoint?: string;
   ncpPartner?: string;
   endpointUrl?: string;
@@ -24,14 +25,15 @@ export interface OnboardOptions {
   pluginConfig: NemoClawConfig;
 }
 
-const ENDPOINT_TYPES: EndpointType[] = ["build", "ncp", "nim-local", "vllm", "ollama", "custom"];
-const SUPPORTED_ENDPOINT_TYPES: EndpointType[] = ["build", "ncp", "ollama"];
+const ENDPOINT_TYPES: EndpointType[] = ["build", "openai", "ncp", "nim-local", "vllm", "ollama", "custom"];
+const SUPPORTED_ENDPOINT_TYPES: EndpointType[] = ["build", "openai", "ncp", "ollama", "custom"];
 
 function isExperimentalEnabled(): boolean {
   return process.env.NEMOCLAW_EXPERIMENTAL === "1";
 }
 
 const BUILD_ENDPOINT_URL = "https://integrate.api.nvidia.com/v1";
+const OPENAI_ENDPOINT_URL = "https://api.openai.com/v1";
 const HOST_GATEWAY_URL = "http://host.openshell.internal";
 
 const DEFAULT_MODELS = [
@@ -43,11 +45,15 @@ const DEFAULT_MODELS = [
   { id: "openai/gpt-oss-120b", label: "GPT-OSS 120B" },
 ];
 const DEFAULT_OLLAMA_MODEL = "nemotron-3-nano:30b";
+const OPENAI_DEFAULT_MODEL_CANDIDATES = ["gpt-5.2", "gpt-5.1", "gpt-5", "gpt-4.1"];
+const CUSTOM_COMPATIBLE_PROVIDER_NAME = "compatible-endpoint";
 
 function resolveProfile(endpointType: EndpointType): string {
   switch (endpointType) {
     case "build":
       return "default";
+    case "openai":
+      return "openai";
     case "ncp":
     case "custom":
       return "ncp";
@@ -63,10 +69,13 @@ function resolveProfile(endpointType: EndpointType): string {
 function resolveProviderName(endpointType: EndpointType): string {
   switch (endpointType) {
     case "build":
-      return "nvidia-nim";
+      return "nvidia-prod";
+    case "openai":
+      return "openai-api";
     case "ncp":
-    case "custom":
       return "nvidia-ncp";
+    case "custom":
+      return CUSTOM_COMPATIBLE_PROVIDER_NAME;
     case "nim-local":
       return "nim-local";
     case "vllm":
@@ -78,6 +87,8 @@ function resolveProviderName(endpointType: EndpointType): string {
 
 function resolveCredentialEnv(endpointType: EndpointType): string {
   switch (endpointType) {
+    case "openai":
+      return "OPENAI_API_KEY";
     case "build":
     case "ncp":
     case "custom":
@@ -91,8 +102,9 @@ function resolveCredentialEnv(endpointType: EndpointType): string {
 }
 
 function isNonInteractive(opts: OnboardOptions): boolean {
-  if (!opts.endpoint || !opts.model) return false;
-  const ep = opts.endpoint as EndpointType;
+  const provider = opts.provider ?? opts.endpoint;
+  if (!provider || !opts.model) return false;
+  const ep = provider as EndpointType;
   if (endpointRequiresApiKey(ep) && !opts.apiKey) return false;
   if ((ep === "ncp" || ep === "nim-local" || ep === "custom") && !opts.endpointUrl) return false;
   if (ep === "ncp" && !opts.ncpPartner) return false;
@@ -101,6 +113,7 @@ function isNonInteractive(opts: OnboardOptions): boolean {
 
 function endpointRequiresApiKey(endpointType: EndpointType): boolean {
   return (
+    endpointType === "openai" ||
     endpointType === "build" ||
     endpointType === "ncp" ||
     endpointType === "nim-local" ||
@@ -117,6 +130,119 @@ function defaultCredentialForEndpoint(endpointType: EndpointType): string {
     default:
       return "";
   }
+}
+
+function defaultEndpointUrl(endpointType: EndpointType): string | null {
+  switch (endpointType) {
+    case "build":
+      return BUILD_ENDPOINT_URL;
+    case "openai":
+      return OPENAI_ENDPOINT_URL;
+    case "vllm":
+      return `${HOST_GATEWAY_URL}:8000/v1`;
+    case "ollama":
+      return `${HOST_GATEWAY_URL}:11434/v1`;
+    default:
+      return null;
+  }
+}
+
+function apiKeyLabel(endpointType: EndpointType, credentialEnv: string): string {
+  if (endpointType === "build" || endpointType === "ncp") {
+    return `NVIDIA API key (${credentialEnv})`;
+  }
+  if (endpointType === "openai") {
+    return `OpenAI API key (${credentialEnv})`;
+  }
+  return `API key (${credentialEnv})`;
+}
+
+function getApiKeyHelp(endpointType: EndpointType): string | null {
+  switch (endpointType) {
+    case "build":
+    case "ncp":
+      return "Get an API key from: https://build.nvidia.com/settings/api-keys";
+    case "openai":
+      return "Get an API key from: https://platform.openai.com/api-keys";
+    default:
+      return null;
+  }
+}
+
+function providerTypeForEndpoint(endpointType: EndpointType): string {
+  switch (endpointType) {
+    case "build":
+      return "nvidia";
+    default:
+      return "openai";
+  }
+}
+
+function buildProviderCommandArgs(
+  action: "create" | "update",
+  endpointType: EndpointType,
+  providerName: string,
+  credentialEnv: string,
+  endpointUrl: string,
+): string[] {
+  if (endpointType === "build") {
+    return action === "create"
+      ? [
+          "provider",
+          "create",
+          "--name",
+          providerName,
+          "--type",
+          providerTypeForEndpoint(endpointType),
+          "--credential",
+          credentialEnv,
+        ]
+      : [
+          "provider",
+          "update",
+          providerName,
+          "--type",
+          providerTypeForEndpoint(endpointType),
+          "--credential",
+          credentialEnv,
+        ];
+  }
+
+  return action === "create"
+    ? [
+        "provider",
+        "create",
+        "--name",
+        providerName,
+        "--type",
+        providerTypeForEndpoint(endpointType),
+        "--credential",
+        credentialEnv,
+        "--config",
+        `OPENAI_BASE_URL=${endpointUrl}`,
+      ]
+    : [
+        "provider",
+        "update",
+        providerName,
+        "--credential",
+        credentialEnv,
+        "--config",
+        `OPENAI_BASE_URL=${endpointUrl}`,
+      ];
+}
+
+function pickRecommendedModel(models: string[], candidates: string[]): string | null {
+  for (const candidate of candidates) {
+    if (models.includes(candidate)) {
+      return candidate;
+    }
+  }
+  return models[0] ?? null;
+}
+
+function shouldSkipInferenceVerification(endpointType: EndpointType): boolean {
+  return endpointType === "openai";
 }
 
 function detectOllama(): { installed: boolean; running: boolean } {
@@ -164,7 +290,7 @@ function showConfig(config: NemoClawOnboardConfig, logger: PluginLogger): void {
   logger.info(`  Endpoint:    ${describeOnboardEndpoint(config)}`);
   logger.info(`  Provider:    ${describeOnboardProvider(config)}`);
   if (config.ncpPartner) {
-    logger.info(`  NCP Partner: ${config.ncpPartner}`);
+    logger.info(`  NVIDIA Cloud Partner: ${config.ncpPartner}`);
   }
   logger.info(`  Model:       ${config.model}`);
   logger.info(`  Credential:  $${config.credentialEnv}`);
@@ -177,14 +303,14 @@ async function promptEndpoint(
 ): Promise<EndpointType> {
   const options = [
     {
-      label: "NVIDIA Build (build.nvidia.com)",
+      label: "NVIDIA hosted",
       value: "build",
       hint: "recommended — zero infra, free credits",
     },
     {
-      label: "NVIDIA Cloud Partner (NCP)",
-      value: "ncp",
-      hint: "dedicated capacity, SLA-backed",
+      label: "OpenAI",
+      value: "openai",
+      hint: "uses OpenAI defaults; base URL override available",
     },
   ];
 
@@ -201,7 +327,7 @@ async function promptEndpoint(
   if (isExperimentalEnabled()) {
     options.push(
       {
-        label: "Self-hosted NIM [experimental]",
+        label: "Local NVIDIA NIM [experimental]",
         value: "nim-local",
         hint: "experimental — your own NIM container deployment",
       },
@@ -213,13 +339,27 @@ async function promptEndpoint(
     );
   }
 
-  return (await promptSelect("Select your inference endpoint:", options)) as EndpointType;
+  options.push(
+    {
+      label: "NVIDIA Cloud Partner",
+      value: "ncp",
+      hint: "dedicated capacity, SLA-backed",
+    },
+    {
+      label: "Other compatible endpoint",
+      value: "custom",
+      hint: "advanced — OpenAI-compatible providers like OpenRouter or hosted vLLM",
+    },
+  );
+
+  return (await promptSelect("Where should NemoClaw get its model?", options)) as EndpointType;
 }
 
-function execOpenShell(args: string[]): string {
+function execOpenShell(args: string[], env: NodeJS.ProcessEnv = process.env): string {
   return execFileSync("openshell", args, {
     encoding: "utf-8",
     stdio: ["pipe", "pipe", "pipe"],
+    env,
   });
 }
 
@@ -249,14 +389,15 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
 
   // Step 1: Endpoint Selection
   let endpointType: EndpointType;
-  if (opts.endpoint) {
-    if (!ENDPOINT_TYPES.includes(opts.endpoint as EndpointType)) {
+  const selectedProvider = opts.provider ?? opts.endpoint;
+  if (selectedProvider) {
+    if (!ENDPOINT_TYPES.includes(selectedProvider as EndpointType)) {
       logger.error(
-        `Invalid endpoint type: ${opts.endpoint}. Must be one of: ${ENDPOINT_TYPES.join(", ")}`,
+        `Invalid endpoint type: ${selectedProvider}. Must be one of: ${ENDPOINT_TYPES.join(", ")}`,
       );
       return;
     }
-    const ep = opts.endpoint as EndpointType;
+    const ep = selectedProvider as EndpointType;
     if (!SUPPORTED_ENDPOINT_TYPES.includes(ep)) {
       logger.warn(
         `Note: '${ep}' is experimental and may not work reliably.`,
@@ -278,13 +419,14 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
 
   switch (endpointType) {
     case "build":
-      endpointUrl = BUILD_ENDPOINT_URL;
+    case "openai":
+      endpointUrl = opts.endpointUrl ?? defaultEndpointUrl(endpointType) ?? "";
       break;
     case "ncp":
-      ncpPartner = opts.ncpPartner ?? (await promptInput("NCP partner name"));
+      ncpPartner = opts.ncpPartner ?? (await promptInput("NVIDIA Cloud Partner name"));
       endpointUrl =
         opts.endpointUrl ??
-        (await promptInput("NCP endpoint URL (e.g., https://partner.api.nvidia.com/v1)"));
+        (await promptInput("NVIDIA Cloud Partner endpoint URL (e.g., https://partner.api.nvidia.com/v1)"));
       break;
     case "nim-local":
       endpointUrl =
@@ -292,13 +434,15 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
         (await promptInput("NIM endpoint URL", "http://nim-service.local:8000/v1"));
       break;
     case "vllm":
-      endpointUrl = `${HOST_GATEWAY_URL}:8000/v1`;
+      endpointUrl = opts.endpointUrl ?? defaultEndpointUrl(endpointType) ?? "";
       break;
     case "ollama":
-      endpointUrl = opts.endpointUrl ?? `${HOST_GATEWAY_URL}:11434/v1`;
+      endpointUrl = opts.endpointUrl ?? defaultEndpointUrl(endpointType) ?? "";
       break;
     case "custom":
-      endpointUrl = opts.endpointUrl ?? (await promptInput("Custom endpoint URL"));
+      endpointUrl =
+        opts.endpointUrl ??
+        (await promptInput("OpenAI-compatible base URL (e.g., https://openrouter.ai/api/v1)"));
       break;
   }
 
@@ -313,17 +457,21 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
   // Step 3: Credential
   let apiKey = defaultCredentialForEndpoint(endpointType);
   if (requiresApiKey) {
+    const keyLabel = apiKeyLabel(endpointType, credentialEnv);
     if (opts.apiKey) {
       apiKey = opts.apiKey;
     } else {
-      const envKey = process.env.NVIDIA_API_KEY;
+      const envKey = process.env[credentialEnv];
       if (envKey) {
-        logger.info(`Detected NVIDIA_API_KEY in environment (${maskApiKey(envKey)})`);
+        logger.info(`Detected ${credentialEnv} in environment (${maskApiKey(envKey)})`);
         const useEnv = nonInteractive ? true : await promptConfirm("Use this key?");
-        apiKey = useEnv ? envKey : await promptInput("Enter your NVIDIA API key");
+        apiKey = useEnv ? envKey : await promptInput(`Enter your ${keyLabel}`, { secret: true });
       } else {
-        logger.info("Get an API key from: https://build.nvidia.com/settings/api-keys");
-        apiKey = await promptInput("Enter your NVIDIA API key");
+        const help = getApiKeyHelp(endpointType);
+        if (help) {
+          logger.info(help);
+        }
+        apiKey = await promptInput(`Enter your ${keyLabel}`, { secret: true });
       }
     }
   } else {
@@ -353,7 +501,10 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
       );
     } else {
       logger.error(`API key validation failed: ${validation.error ?? "unknown error"}`);
-      logger.info("Check your key at https://build.nvidia.com/settings/api-keys");
+      const help = getApiKeyHelp(endpointType);
+      if (help) {
+        logger.info(help);
+      }
       return;
     }
   } else {
@@ -378,16 +529,33 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
             value: option.id,
           }))
         : [];
+    const curatedOpenAiOptions =
+      endpointType === "openai"
+        ? OPENAI_DEFAULT_MODEL_CANDIDATES.filter((id) => validation.models.includes(id)).map((id) => ({
+            label: id,
+            value: id,
+          }))
+        : [];
     const defaultIndex =
       endpointType === "ollama"
         ? Math.max(
             0,
             discoveredModelOptions.findIndex((option) => option.value === getDefaultOllamaModel()),
           )
+        : endpointType === "openai"
+          ? Math.max(
+              0,
+              curatedOpenAiOptions.findIndex(
+                (option) =>
+                  option.value === pickRecommendedModel(validation.models, OPENAI_DEFAULT_MODEL_CANDIDATES),
+              ),
+            )
         : 0;
     const modelOptions =
       curatedCloudOptions.length > 0
         ? curatedCloudOptions
+        : curatedOpenAiOptions.length > 0
+          ? curatedOpenAiOptions
         : discoveredModelOptions.length > 0
           ? discoveredModelOptions
           : DEFAULT_MODELS.map((m) => ({ label: `${m.label} (${m.id})`, value: m.id }));
@@ -417,12 +585,15 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
   logger.info(`  Endpoint:    ${describeOnboardEndpoint(summaryConfig)}`);
   logger.info(`  Provider:    ${summaryConfig.providerLabel}`);
   if (ncpPartner) {
-    logger.info(`  NCP Partner: ${ncpPartner}`);
+    logger.info(`  NVIDIA Cloud Partner: ${ncpPartner}`);
   }
   logger.info(`  Model:       ${model}`);
   logger.info(
     `  API Key:     ${requiresApiKey ? maskApiKey(apiKey) : "not required (local provider)"}`,
   );
+  if (endpointType === "openai" && endpointUrl !== OPENAI_ENDPOINT_URL) {
+    logger.info("  Base URL:    custom override");
+  }
   logger.info(`  Credential:  $${credentialEnv}`);
   logger.info(`  Profile:     ${profile}`);
   logger.info(`  Provider:    ${providerName}`);
@@ -440,35 +611,24 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
   logger.info("");
   logger.info("Applying configuration...");
 
+  const providerEnv = { ...process.env, [credentialEnv]: apiKey };
+
   // 7a: Create/update provider
   try {
-    execOpenShell([
-      "provider",
-      "create",
-      "--name",
-      providerName,
-      "--type",
-      "openai",
-      "--credential",
-      `${credentialEnv}=${apiKey}`,
-      "--config",
-      `OPENAI_BASE_URL=${endpointUrl}`,
-    ]);
+    execOpenShell(
+      buildProviderCommandArgs("create", endpointType, providerName, credentialEnv, endpointUrl),
+      providerEnv,
+    );
     logger.info(`Created provider: ${providerName}`);
   } catch (err) {
     const stderr =
       err instanceof Error && "stderr" in err ? String((err as { stderr: unknown }).stderr) : "";
     if (stderr.includes("AlreadyExists") || stderr.includes("already exists")) {
       try {
-        execOpenShell([
-          "provider",
-          "update",
-          providerName,
-          "--credential",
-          `${credentialEnv}=${apiKey}`,
-          "--config",
-          `OPENAI_BASE_URL=${endpointUrl}`,
-        ]);
+        execOpenShell(
+          buildProviderCommandArgs("update", endpointType, providerName, credentialEnv, endpointUrl),
+          providerEnv,
+        );
         logger.info(`Updated provider: ${providerName}`);
       } catch (updateErr) {
         const updateStderr =
@@ -486,7 +646,15 @@ export async function cliOnboard(opts: OnboardOptions): Promise<void> {
 
   // 7b: Set inference route
   try {
-    execOpenShell(["inference", "set", "--provider", providerName, "--model", model]);
+    const inferenceArgs = ["inference", "set"];
+    if (shouldSkipInferenceVerification(endpointType)) {
+      inferenceArgs.push("--no-verify");
+      logger.warn(
+        "Skipping OpenShell inference verification for OpenAI models for now due to current GPT-5-family verifier incompatibility.",
+      );
+    }
+    inferenceArgs.push("--provider", providerName, "--model", model);
+    execOpenShell(inferenceArgs, providerEnv);
     logger.info(`Inference route set: ${providerName} -> ${model}`);
   } catch (err) {
     const stderr =

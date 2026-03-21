@@ -108,15 +108,17 @@ export function registerCliCommands(ctx: PluginCliContext, api: OpenClawPluginAp
   // openclaw nemoclaw onboard
   nemoclaw
     .command("onboard")
-    .description("Interactive setup: configure inference endpoint, credential, and model")
+    .description("Interactive setup: configure an inference provider, credential, and model")
     .option("--api-key <key>", "API key for endpoints that require one (skips prompt)")
-    .option("--endpoint <type>", "Endpoint type: build, ncp, ollama, nim-local, vllm, custom (nim-local and vllm are experimental)")
-    .option("--ncp-partner <name>", "NCP partner name (when endpoint is ncp)")
-    .option("--endpoint-url <url>", "Endpoint URL (for ncp, nim-local, ollama, or custom)")
+    .option("--provider <type>", "Provider type: build, openai, ncp, ollama, custom (nim-local and vllm are experimental)")
+    .option("--endpoint <type>", "Deprecated alias for --provider")
+    .option("--ncp-partner <name>", "NVIDIA Cloud Partner name (when provider is ncp)")
+    .option("--endpoint-url <url>", "Endpoint URL override (for openai, ncp, nim-local, ollama, or custom)")
     .option("--model <model>", "Model ID to use")
     .action(
       async (opts: {
         apiKey?: string;
+        provider?: string;
         endpoint?: string;
         ncpPartner?: string;
         endpointUrl?: string;
@@ -124,6 +126,7 @@ export function registerCliCommands(ctx: PluginCliContext, api: OpenClawPluginAp
       }) => {
         await cliOnboard({
           apiKey: opts.apiKey,
+          provider: opts.provider,
           endpoint: opts.endpoint,
           ncpPartner: opts.ncpPartner,
           endpointUrl: opts.endpointUrl,

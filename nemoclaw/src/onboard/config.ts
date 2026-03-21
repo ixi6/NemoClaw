@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 const CONFIG_DIR = join(process.env.HOME ?? "/tmp", ".nemoclaw");
 
-export type EndpointType = "build" | "ncp" | "nim-local" | "vllm" | "ollama" | "custom";
+export type EndpointType = "build" | "openai" | "ncp" | "nim-local" | "vllm" | "ollama" | "custom";
 
 export interface NemoClawOnboardConfig {
   endpointType: EndpointType;
@@ -35,17 +35,19 @@ export function describeOnboardProvider(config: NemoClawOnboardConfig): string {
 
   switch (config.endpointType) {
     case "build":
-      return "NVIDIA Cloud API";
+      return "NVIDIA hosted";
+    case "openai":
+      return "OpenAI";
     case "ollama":
       return "Local Ollama";
     case "vllm":
       return "Local vLLM";
     case "nim-local":
-      return "Local NIM";
+      return "Local NVIDIA NIM";
     case "ncp":
       return "NVIDIA Cloud Partner";
     case "custom":
-      return "Managed Inference Route";
+      return "Other OpenAI-compatible endpoint";
     default:
       return "Unknown";
   }
