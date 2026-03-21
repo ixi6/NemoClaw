@@ -188,6 +188,13 @@ function runCaptureOpenshell(args, opts = {}) {
   return runCapture(openshellShellCommand(args), opts);
 }
 
+function getStableGatewayImageRef() {
+  const output = runCaptureOpenshell(["--version"], { ignoreError: true });
+  const match = output.match(/openshell\s+([0-9]+\.[0-9]+\.[0-9]+)/i);
+  if (!match) return null;
+  return `ghcr.io/nvidia/openshell/cluster:${match[1]}`;
+}
+
 function formatEnvAssignment(name, value) {
   return `${name}=${value}`;
 }
@@ -551,7 +558,17 @@ async function startGateway(gpu) {
   // FailedPrecondition errors when the gateway's k3s device plugin cannot
   // allocate GPUs. See: https://build.nvidia.com/spark/nemoclaw/instructions
 
-  runOpenshell(["gateway", "start", ...gwArgs], { ignoreError: false });
+  const gatewayEnv = {};
+  const stableGatewayImage = getStableGatewayImageRef();
+  if (stableGatewayImage) {
+    gatewayEnv.OPENSHELL_CLUSTER_IMAGE = stableGatewayImage;
+    console.log(`  Using pinned OpenShell gateway image: ${stableGatewayImage}`);
+  }
+
+  runOpenshell(["gateway", "start", ...gwArgs], {
+    ignoreError: false,
+    env: gatewayEnv,
+  });
 
   // Verify health
   for (let i = 0; i < 5; i++) {
@@ -1102,27 +1119,24 @@ async function setupPolicies(sandboxName) {
       process.exit(1);
     }
     console.log(`  [non-interactive] Applying policy presets: ${selectedPresets.join(", ")}`);
-    try {
-      for (const name of selectedPresets) {
-        for (let attempt = 0; attempt < 3; attempt += 1) {
-          try {
-            policies.applyPreset(sandboxName, name);
-            break;
-          } catch (err) {
-            const message = err && err.message ? err.message : String(err);
-            if (message.includes("Unimplemented")) {
-              console.log("  OpenShell policy updates are not supported by this gateway build. Skipping presets.");
-              return;
-            }
-            if (!message.includes("sandbox not found") || attempt === 2) {
-              throw err;
-            }
-            sleep(2);
+    for (const name of selectedPresets) {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          policies.applyPreset(sandboxName, name);
+          break;
+        } catch (err) {
+          const message = err && err.message ? err.message : String(err);
+          if (message.includes("Unimplemented")) {
+            console.error("  OpenShell policy updates are not supported by this gateway build.");
+            console.error("  This is a known issue tracked in NemoClaw #536.");
+            throw err;
           }
+          if (!message.includes("sandbox not found") || attempt === 2) {
+            throw err;
+          }
+          sleep(2);
         }
       }
-    } catch (err) {
-      throw err;
     }
   } else {
     const answer = await prompt(`  Apply suggested presets (${suggestions.join(", ")})? [Y/n/list]: `);
@@ -1142,8 +1156,8 @@ async function setupPolicies(sandboxName) {
         } catch (err) {
           const message = err && err.message ? err.message : String(err);
           if (message.includes("Unimplemented")) {
-            console.log("  OpenShell policy updates are not supported by this gateway build. Skipping presets.");
-            return;
+            console.error("  OpenShell policy updates are not supported by this gateway build.");
+            console.error("  This is a known issue tracked in NemoClaw #536.");
           }
           throw err;
         }
@@ -1156,8 +1170,8 @@ async function setupPolicies(sandboxName) {
         } catch (err) {
           const message = err && err.message ? err.message : String(err);
           if (message.includes("Unimplemented")) {
-            console.log("  OpenShell policy updates are not supported by this gateway build. Skipping presets.");
-            return;
+            console.error("  OpenShell policy updates are not supported by this gateway build.");
+            console.error("  This is a known issue tracked in NemoClaw #536.");
           }
           throw err;
         }
@@ -1222,6 +1236,7 @@ async function onboard(opts = {}) {
 
 module.exports = {
   buildSandboxConfigSyncScript,
+  getStableGatewayImageRef,
   hasStaleGateway,
   isSandboxReady,
   onboard,

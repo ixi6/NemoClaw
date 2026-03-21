@@ -8,7 +8,12 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
-const { buildSandboxConfigSyncScript, pruneStaleSandboxEntry, runCaptureOpenshell } = require("../bin/lib/onboard");
+const {
+  buildSandboxConfigSyncScript,
+  getStableGatewayImageRef,
+  pruneStaleSandboxEntry,
+  runCaptureOpenshell,
+} = require("../bin/lib/onboard");
 
 describe("onboard helpers", () => {
   it("builds a sandbox sync script that writes config and updates the selected model", () => {
@@ -31,6 +36,39 @@ describe("onboard helpers", () => {
     assert.match(script, /json\.loads\("\{\\\"baseUrl\\\":\\\"https:\/\/inference\.local\/v1\\\",\\\"apiKey\\\":\\\"unused\\\"/);
     assert.match(script, /inference\/nemotron-3-nano:30b/);
     assert.match(script, /^exit$/m);
+  });
+
+  it("pins the gateway image to the installed OpenShell release version", () => {
+    const repoRoot = path.join(__dirname, "..");
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-onboard-version-"));
+    const fakeBin = path.join(tmpDir, "bin");
+    const scriptPath = path.join(tmpDir, "gateway-image-version-check.js");
+    const onboardPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "onboard.js"));
+    const runnerPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "runner.js"));
+
+    fs.mkdirSync(fakeBin, { recursive: true });
+    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nif [ \"$1\" = \"--version\" ]; then\n  echo 'openshell 0.0.12'\n  exit 0\nfi\nexit 0\n", { mode: 0o755 });
+
+    const script = String.raw`
+const runner = require(${runnerPath});
+runner.runCapture = () => "openshell 0.0.12";
+const { getStableGatewayImageRef } = require(${onboardPath});
+console.log(getStableGatewayImageRef());
+`;
+    fs.writeFileSync(scriptPath, script);
+
+    const result = spawnSync(process.execPath, [scriptPath], {
+      cwd: repoRoot,
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        HOME: tmpDir,
+        PATH: `${fakeBin}:${process.env.PATH || ""}`,
+      },
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), "ghcr.io/nvidia/openshell/cluster:0.0.12");
   });
 
   it("passes credential names to openshell without embedding secret values in argv", () => {
